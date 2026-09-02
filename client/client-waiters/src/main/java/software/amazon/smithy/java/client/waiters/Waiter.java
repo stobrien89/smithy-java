@@ -142,7 +142,7 @@ public final class Waiter<I extends SerializableStruct, O extends SerializableSt
         long elapsedTimeMillis = System.currentTimeMillis() - startTimeMillis;
         long remainingTime = maxWaitTimeMillis - elapsedTimeMillis;
 
-        if (remainingTime < 0) {
+        if (remainingTime <= 0) {
             throw WaiterFailureException.builder()
                     .message("Waiter timed out after " + attemptNumber + " retry attempts.")
                     .attemptNumber(attemptNumber)
@@ -150,6 +150,7 @@ public final class Waiter<I extends SerializableStruct, O extends SerializableSt
                     .build();
         }
         var delay = backoffStrategy.computeNextDelayInMills(attemptNumber, remainingTime);
+        var exhaustsWaitTime = delay >= remainingTime;
         try {
             Thread.sleep(delay);
         } catch (InterruptedException e) {
@@ -158,6 +159,15 @@ public final class Waiter<I extends SerializableStruct, O extends SerializableSt
                     .message("Waiter interrupted while waiting to retry.")
                     .attemptNumber(attemptNumber)
                     .totalTimeMillis(System.currentTimeMillis() - startTimeMillis)
+                    .build();
+        }
+
+        elapsedTimeMillis = System.currentTimeMillis() - startTimeMillis;
+        if (exhaustsWaitTime || elapsedTimeMillis >= maxWaitTimeMillis) {
+            throw WaiterFailureException.builder()
+                    .message("Waiter timed out after " + attemptNumber + " retry attempts.")
+                    .attemptNumber(attemptNumber)
+                    .totalTimeMillis(elapsedTimeMillis)
                     .build();
         }
     }

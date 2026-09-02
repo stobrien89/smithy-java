@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import software.amazon.smithy.java.client.waiters.backoff.BackoffStrategy;
 import software.amazon.smithy.java.client.waiters.matching.Matcher;
@@ -71,6 +72,26 @@ public class TestWaiters {
                 WaiterFailureException.class,
                 () -> waiter.wait(new GetFoosInput(ID), 5));
         assertNull(exc.getCause());
+        assertTrue(exc.getMessage().contains("Waiter timed out after"));
+    }
+
+    @Test
+    void testWaiterDoesNotPollAfterMaxWaitTime() {
+        var attempts = new AtomicInteger();
+        var waiter = Waiter.<GetFoosInput, GetFoosOutput>builder((input, override) -> {
+            var status = attempts.incrementAndGet() == 1 ? "BUILDING" : "DONE";
+            return new GetFoosOutput(status);
+        })
+                .backoffStrategy((attempt, remainingTime) -> remainingTime)
+                .success(Matcher.output(o -> o.status().equals("DONE")))
+                .build();
+
+        var exc = assertThrows(
+                WaiterFailureException.class,
+                () -> waiter.wait(new GetFoosInput(ID), 100));
+
+        assertEquals(1, attempts.get());
+        assertEquals(1, exc.getAttemptNumber());
         assertTrue(exc.getMessage().contains("Waiter timed out after"));
     }
 
